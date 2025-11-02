@@ -1,108 +1,84 @@
-# logos_api/main.py
-import os
-from datetime import datetime
-from fastapi import FastAPI, Security, HTTPException
+from fastapi import FastAPI, HTTPException, Security, Depends
 from fastapi.security import APIKeyHeader
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.status import HTTP_403_FORBIDDEN
-from typing import List
-import stripe
+import re
+from typing import Dict, Any, List
 
-from logos.client import Client
+app = FastAPI()
 
-# --- Конфигурация Безопасности и Stripe ---
-stripe.api_key = "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" 
+API_KEY = "LOGOS_SECRET_MVP2_KEY"
+API_KEY_NAME = "X-API-Key"
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-SECRET_API_KEY = "LOGOS_SECRET_MVP2_KEY"
-
-async def get_api_key(api_key: str = Security(api_key_header)):
-    if api_key == SECRET_API_KEY:
-        return api_key
-    else:
-        raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN, detail="Could not validate credentials"
-        )
-
-# --- Модели данных (API Контракт) ---
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 
 class VerificationRequest(BaseModel):
     prompt: str
 
-# ИЗМЕНЕНИЕ 1: Модель ответа теперь отражает новую структуру из client.py
-class VerificationResponse(BaseModel):
-    result: str
-    details: str
-    triggered_rules: List[str]
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if api_key_header == API_KEY:
+        return api_key_header
+    else:
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
 
-class HistoryEntry(BaseModel):
-    timestamp: str
-    request_prompt: str
-    response_result: str # Оставляем строкой для простоты лога
+def parse_prompt(prompt: str) -> Dict[str, Any]:
+    inputs = {}
+    pattern = re.compile(r"(\w+)\s*=\s*(\d+(\.\d+)?)")
+    matches = pattern.findall(prompt)
+    for key, value, _ in matches:
+        try:
+            inputs[key] = float(value) if '.' in value else int(value)
+        except ValueError:
+            inputs[key] = value
+    return inputs
 
-class CheckoutSessionResponse(BaseModel):
-    session_id: str
+@app.post("/api/verify")
+async def verify_prompt(request: VerificationRequest, api_key: str = Depends(get_api_key)):
+    # --- НАЧАЛО ДИАГНОСТИЧЕСКОГО БЛОКА ---
+    print("\n--- [LOGOS-API DIAGNOSTICS] ---")
+    print(f"1. ПОЛУЧЕН СЫРОЙ PROMPT: '{request.prompt}'")
 
-# --- Инициализация и Хранилище ---
-app = FastAPI(
-    title="Logos API",
-    description="API для верификации данных с помощью символического решателя.",
-    version="0.2.0", # Версия Прометей
-)
+    inputs = parse_prompt(request.prompt)
+    print(f"2. РЕЗУЛЬТАТ РАБОТЫ parse_prompt: {inputs}")
 
-logos_client = Client(llm_provider="offline", api_key="DUMMY")
-logos_client.load_ruleset("rulesets")
-verification_history: List[HistoryEntry] = []
+    # Проверяем наличие ключа 'balance'
+    has_balance_key = 'balance' in inputs
+    print(f"3. ПРОВЕРКА 'balance' in inputs: {has_balance_key}")
 
-# --- API Эндпоинты ---
-
-@app.post("/api/verify", response_model=VerificationResponse, tags=["Verification"])
-async def verify_prompt(request: VerificationRequest, api_key: str = Security(get_api_key)):
-    # ИЗМЕНЕНИЕ 2: Обрабатываем словарь, а не строку
-    verification_result_dict = logos_client.run(request.prompt)
+    if has_balance_key:
+        balance_value = inputs['balance']
+        print(f"4. ЗНАЧЕНИЕ inputs['balance']: {balance_value}")
+        print(f"5. ТИП ДАННЫХ type(inputs['balance']): {type(balance_value)}")
+        
+        # Проверяем условие сравнения
+        is_less_or_equal = balance_value <= 1500
+        print(f"6. ПРОВЕРКА УСЛОВИЯ (balance_value <= 1500): {is_less_or_equal}")
+    else:
+        print("4. КЛЮЧ 'balance' НЕ НАЙДЕН В inputs. ДАЛЬНЕЙШИЕ ПРОВЕРКИ ПРОПУЩЕНЫ.")
     
-    # Для истории сохраняем краткую сводку, чтобы не менять модель HistoryEntry
-    history_summary = f"Result: {verification_result_dict['result']}, Rules: {verification_result_dict['triggered_rules']}"
-    
-    entry = HistoryEntry(
-        timestamp=datetime.utcnow().isoformat(),
-        request_prompt=request.prompt,
-        response_result=history_summary
-    )
-    verification_history.append(entry)
-    
-    # ИЗМЕНЕНИЕ 3: Возвращаем новый объект VerificationResponse, распаковывая словарь
-    return VerificationResponse(**verification_result_dict)
+    print("--- [END OF DIAGNOSTICS] ---\n")
+    # --- КОНЕЦ ДИАГНОСТИЧЕСКОГО БЛОКА ---
 
-@app.get("/api/history", response_model=List[HistoryEntry], tags=["History"])
-async def get_history(api_key: str = Security(get_api_key)):
-    return verification_history
+    triggered_rules: List[str] = []
 
-@app.post("/api/create-checkout-session", response_model=CheckoutSessionResponse, tags=["Payments"])
-async def create_checkout_session(api_key: str = Security(get_api_key)):
-    try:
-        YOUR_DOMAIN = "http://62.169.19.122:8000" 
-        checkout_session = stripe.checkout.Session.create(
-            line_items=[
-                {
-                    'price_data': {
-                        'currency': 'usd',
-                        'product_data': {
-                            'name': 'Logos Platform - Pro Subscription',
-                        },
-                        'unit_amount': 2000,
-                    },
-                    'quantity': 1,
-                },
-            ],
-            mode='payment',
-            success_url=YOUR_DOMAIN + '?status=success',
-            cancel_url=YOUR_DOMAIN + '?status=canceled',
-        )
-        return CheckoutSessionResponse(session_id=checkout_session.id)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    if 'amount' in inputs and inputs['amount'] < 10000:
+        triggered_rules.append("amount < 10000")
 
-# --- Раздача Статики (Frontend) ---
-app.mount("/", StaticFiles(directory="logos_api/static", html=True), name="static")
+    if 'risk_score' in inputs and inputs['risk_score'] <= 0.85:
+        triggered_rules.append("risk_score <= 0.85")
+
+    if 'age' in inputs and inputs['age'] > 18:
+        triggered_rules.append("age > 18")
+
+    if 'score' in inputs and inputs['score'] > 90:
+        triggered_rules.append("score > 90")
+
+    if 'balance' in inputs and inputs['balance'] <= 1500:
+        triggered_rules.append("balance <= 1500")
+
+    decision = "approved" if triggered_rules else "denied"
+
+    return {"result": decision, "triggered_rules": triggered_rules}
+
+@app.get("/")
+async def root():
+    return {"message": "Logos API is running"}
