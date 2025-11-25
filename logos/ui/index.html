@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MAGNUM OPS | CONTROL CENTER</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <!-- FIX: Используем конкретную версию 4.1.1, чтобы избежать поломок API -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
@@ -21,7 +22,6 @@
         .control-group { display: flex; flex-direction: column; gap: 10px; }
         label { font-size: 12px; text-transform: uppercase; color: #8b949e; }
         
-        /* Кнопка ЯДЕРНОГО УДАРА */
         .nuke-btn {
             background: #21262d; color: #f85149; border: 1px solid #f85149;
             padding: 15px; font-size: 16px; font-weight: bold; cursor: pointer;
@@ -45,29 +45,35 @@
     </div>
 
     <div class="main-container">
-        <!-- ГРАФИК -->
         <div id="chart-container"></div>
-
-        <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
         <div class="controls">
             <div class="control-group">
                 <label>Chaos Protocol</label>
-                <button class="nuke-btn" id="nuke-btn" onclick="toggleChaos()">ACTIVATE CRASH</button>
+                <!-- Убираем onclick из HTML, будем вешать EventListener в JS для безопасности -->
+                <button class="nuke-btn" id="nuke-btn">ACTIVATE CRASH</button>
             </div>
             
             <div class="control-group">
                 <label>System Logs (Real-time)</label>
                 <div class="log-console" id="log-console">
                     <div class="log-entry">> System initialized...</div>
-                    <div class="log-entry">> Waiting for telemetry...</div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // 1. Инициализация Графика
+        // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ (В самом верху!) ---
+        let chaosActive = false;
+        let socket;
+        
+        // Элементы DOM
+        const statusDiv = document.getElementById('connection-status');
+        const logConsole = document.getElementById('log-console');
+        const nukeBtn = document.getElementById('nuke-btn');
         const chartContainer = document.getElementById('chart-container');
+
+        // --- 1. ГРАФИК ---
         const chart = LightweightCharts.createChart(chartContainer, {
             layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#c9d1d9' },
             grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
@@ -77,20 +83,57 @@
             upColor: '#3fb950', downColor: '#f85149', borderVisible: false, wickUpColor: '#3fb950', wickDownColor: '#f85149',
         });
 
-        // Адаптивность
+        // Ресайз графика
         new ResizeObserver(entries => {
             if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
             const newRect = entries[0].contentRect;
             chart.applyOptions({ width: newRect.width, height: newRect.height });
         }).observe(chartContainer);
 
-        // 2. Логика WebSocket
-        const statusDiv = document.getElementById('connection-status');
-        const logConsole = document.getElementById('log-console');
+        // --- 2. ЛОГИКА UI ---
+        
+        // Функция Логирования
+        function log(text, isPoison = false) {
+            const div = document.createElement('div');
+            div.className = 'log-entry' + (isPoison ? ' poison' : '');
+            div.innerText = text;
+            logConsole.prepend(div);
+            if (logConsole.children.length > 50) logConsole.lastElementChild.remove();
+        }
+
+        // Функция переключения Хаоса
+        async function toggleChaos() {
+            chaosActive = !chaosActive;
+            console.log("Toggling Chaos. New State:", chaosActive); // Debug
+            
+            if (chaosActive) {
+                nukeBtn.innerText = "DEACTIVATE CRASH";
+                nukeBtn.classList.add('active');
+                log("> INITIATING CHAOS PROTOCOL...");
+            } else {
+                nukeBtn.innerText = "ACTIVATE CRASH";
+                nukeBtn.classList.remove('active');
+                log("> CHAOS PROTOCOL STANDBY.");
+            }
+
+            try {
+                await fetch('/control/chaos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: chaosActive })
+                });
+            } catch (e) {
+                log(`> COMMAND ERROR: ${e}`);
+                console.error(e);
+            }
+        }
+
+        // Вешаем слушатель событий (безопаснее, чем onclick)
+        nukeBtn.addEventListener('click', toggleChaos);
+
+        // --- 3. WEBSOCKET ---
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const wsUrl = `${protocol}://${window.location.host}/ws`;
-        
-        let socket;
 
         function connect() {
             socket = new WebSocket(wsUrl);
@@ -106,9 +149,8 @@
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'CANDLE_UPDATE') {
                     const c = msg.data;
-                    // Обновляем график
                     candleSeries.update({
-                        time: c.time / 1000, // TV requires seconds
+                        time: c.time / 1000, 
                         open: c.open, high: c.high, low: c.low, close: c.close
                     });
                     
@@ -126,44 +168,7 @@
             };
         }
 
-        // 3. Управление Хаосом
-        let chaosActive = false;
-        const nukeBtn = document.getElementById('nuke-btn');
-
-        async function toggleChaos() {
-            chaosActive = !chaosActive;
-            
-            // Визуал кнопки
-            if (chaosActive) {
-                nukeBtn.innerText = "DEACTIVATE CRASH";
-                nukeBtn.classList.add('active');
-                log("> INITIATING CHAOS PROTOCOL...");
-            } else {
-                nukeBtn.innerText = "ACTIVATE CRASH";
-                nukeBtn.classList.remove('active');
-                log("> CHAOS PROTOCOL STANDBY.");
-            }
-
-            // Отправка команды на бэкенд
-            try {
-                await fetch('/control/chaos', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ active: chaosActive })
-                });
-            } catch (e) {
-                log(`> COMMAND ERROR: ${e}`);
-            }
-        }
-
-        function log(text, isPoison = false) {
-            const div = document.createElement('div');
-            div.className = 'log-entry' + (isPoison ? ' poison' : '');
-            div.innerText = text;
-            logConsole.prepend(div);
-        }
-
-        // Старт
+        // Запуск
         connect();
     </script>
 </body>
