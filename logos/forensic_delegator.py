@@ -1,14 +1,17 @@
 from logos.log_parser import LogParser
 from logos.time_machine import TimeMachine
 from logos.solvers.forensic_solver import ForensicSolver
+from logos.reporter import Reporter
 import sys
 import os
+import time
 
 class ForensicDelegator:
     def __init__(self):
         self.parser = LogParser()
         self.tm = TimeMachine()
         self.solver = ForensicSolver()
+        self.reporter = Reporter(output_dir="/data/reports")
 
     def run_investigation(self, csv_path: str):
         if not os.path.exists(csv_path):
@@ -27,7 +30,6 @@ class ForensicDelegator:
         # 2. Путешествие во времени
         symbol = death_trade['symbol']
         timestamp = death_trade['timestamp_ms']
-        # Берем данные чуть шире для контекста
         start_time = timestamp - 5000 
         end_time = timestamp + 1000
         
@@ -36,12 +38,21 @@ class ForensicDelegator:
         orderbook = self.tm.get_orderbook_snapshot(symbol, limit=100)
         
         if historical_trades.empty or orderbook is None:
-            return "ERROR: Time Machine failed to retrieve historical context (Network issue?)"
+            return "ERROR: Time Machine failed to retrieve historical context."
 
         # 3. Вызов Судьи (Z3)
         print(f"[Delegator] Data secured ({len(historical_trades)} trades). Summoning The Solver...")
-        verdict = self.solver.verify(death_trade, historical_trades, orderbook)
-        return verdict
+        z3_result = self.solver.verify(death_trade, historical_trades, orderbook)
+        
+        # 4. Оформление документов (Reporter)
+        print("[Delegator] Generating Verdict Document...")
+        case_id = f"CASE-{int(time.time())}"
+        pdf_path = self.reporter.create_verdict(case_id, death_trade, z3_result, historical_trades)
+        
+        return {
+            "verdict": z3_result['verdict'],
+            "report_path": pdf_path
+        }
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
