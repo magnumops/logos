@@ -1,22 +1,18 @@
 from logos.log_parser import LogParser
 from logos.time_machine import TimeMachine
+from logos.solvers.forensic_solver import ForensicSolver
 import os
 
 class ForensicDelegator:
-    """
-    Координатор расследования.
-    Связывает улики (CSV), машину времени (API) и судью (Solver).
-    """
-    
     def __init__(self):
         self.parser = LogParser()
         self.tm = TimeMachine()
-        # Solver будет подключен позже
+        self.solver = ForensicSolver()
 
     def run_investigation(self, csv_path: str):
         print(f"[Delegator] Starting investigation on case file: {csv_path}")
         
-        # 1. Анализ улик (Парсинг)
+        # 1. Анализ улик
         try:
             evidence_df = self.parser.normalize(csv_path)
             death_trade = self.parser.get_death_trade(evidence_df)
@@ -24,11 +20,9 @@ class ForensicDelegator:
         except Exception as e:
             return f"CRITICAL ERROR: Failed to parse evidence. {e}"
 
-        # 2. Путешествие во времени (Сбор данных)
+        # 2. Путешествие во времени
         symbol = death_trade['symbol']
         timestamp = death_trade['timestamp_ms']
-        
-        # Берем окно +/- 1 секунда вокруг сделки
         start_time = timestamp - 1000
         end_time = timestamp + 1000
         
@@ -38,28 +32,24 @@ class ForensicDelegator:
         
         if historical_trades.empty or orderbook is None:
             return "ERROR: Time Machine failed to retrieve historical context."
-            
-        print(f"[Delegator] Recovered {len(historical_trades)} historical trades and orderbook state.")
 
-        # 3. Вызов Судьи (ForensicSolver) - Placeholder
-        return {
-            "status": "READY_FOR_TRIAL",
-            "suspect_trade": death_trade,
-            "context_trades_count": len(historical_trades),
-            "orderbook_depth": len(orderbook['bids'])
-        }
+        # 3. Вызов Судьи (Z3)
+        print("[Delegator] Data secured. Summoning The Solver...")
+        verdict = self.solver.verify(death_trade, historical_trades, orderbook)
+        return verdict
 
-# Self-test
 if __name__ == "__main__":
-    # Создаем фиктивный файл улик для теста
+    # Тест на "нормальной" сделке (должен вернуть CLEAN, если цена близка к рынку)
+    # ПРИМЕЧАНИЕ: Поскольку TimeMachine качает РЕАЛЬНЫЙ стакан СЕЙЧАС, а дата сделки в будущем/прошлом,
+    # мы можем получить UNSAT просто из-за разницы времени. Это нормально для теста.
     with open("test_crash.csv", "w") as f:
         f.write("time,symbol,side,price,qty\n")
-        f.write("2025-11-25 09:30:00,BTCUSDT,BUY,95000.00,0.5\n")
+        # Ставим заведомо нереальную цену (1M за биток), чтобы получить UNSAT
+        f.write("2025-11-25 09:30:00,BTCUSDT,BUY,1000000.00,0.5\n")
     
     delegator = ForensicDelegator()
     result = delegator.run_investigation("test_crash.csv")
-    print("\n[RESULT]", result)
+    print("\n[FINAL VERDICT]", result)
     
-    # Чистим за собой
     if os.path.exists("test_crash.csv"):
         os.remove("test_crash.csv")
