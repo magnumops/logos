@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAGNUM OPS | CONTROL CENTER</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .logo { font-size: 24px; font-weight: bold; color: #58a6ff; }
+        .status { font-size: 14px; }
+        .status.online { color: #3fb950; }
+        .status.offline { color: #f85149; }
+        
+        .main-container { display: flex; flex: 1; gap: 20px; }
+        #chart-container { flex: 1; border: 1px solid #30363d; border-radius: 6px; position: relative; }
+        
+        .controls { width: 300px; background: #161b22; padding: 20px; border-radius: 6px; border: 1px solid #30363d; display: flex; flex-direction: column; gap: 20px; }
+        
+        .control-group { display: flex; flex-direction: column; gap: 10px; }
+        label { font-size: 12px; text-transform: uppercase; color: #8b949e; }
+        
+        /* Кнопка ЯДЕРНОГО УДАРА */
+        .nuke-btn {
+            background: #21262d; color: #f85149; border: 1px solid #f85149;
+            padding: 15px; font-size: 16px; font-weight: bold; cursor: pointer;
+            transition: all 0.2s; text-transform: uppercase; letter-spacing: 2px;
+        }
+        .nuke-btn:hover { background: #f85149; color: #fff; box-shadow: 0 0 15px rgba(248, 81, 73, 0.5); }
+        .nuke-btn.active { background: #f85149; color: #fff; box-shadow: 0 0 20px rgba(248, 81, 73, 0.8); animation: pulse 1s infinite; }
+        
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+
+        .log-console { flex: 1; background: #000; border: 1px solid #30363d; padding: 10px; font-size: 12px; overflow-y: auto; color: #7ee787; font-family: monospace; }
+        .log-entry { margin-bottom: 4px; }
+        .log-entry.poison { color: #f85149; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo">MAGNUM OPS // CONTROL CENTER</div>
+        <div class="status" id="connection-status">DISCONNECTED</div>
+    </div>
+
+    <div class="main-container">
+        <!-- ГРАФИК -->
+        <div id="chart-container"></div>
+
+        <!-- ПАНЕЛЬ УПРАВЛЕНИЯ -->
+        <div class="controls">
+            <div class="control-group">
+                <label>Chaos Protocol</label>
+                <button class="nuke-btn" id="nuke-btn" onclick="toggleChaos()">ACTIVATE CRASH</button>
+            </div>
+            
+            <div class="control-group">
+                <label>System Logs (Real-time)</label>
+                <div class="log-console" id="log-console">
+                    <div class="log-entry">> System initialized...</div>
+                    <div class="log-entry">> Waiting for telemetry...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Инициализация Графика
+        const chartContainer = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(chartContainer, {
+            layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#c9d1d9' },
+            grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
+            timeScale: { timeVisible: true, secondsVisible: true },
+        });
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#3fb950', downColor: '#f85149', borderVisible: false, wickUpColor: '#3fb950', wickDownColor: '#f85149',
+        });
+
+        // Адаптивность
+        new ResizeObserver(entries => {
+            if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
+            const newRect = entries[0].contentRect;
+            chart.applyOptions({ width: newRect.width, height: newRect.height });
+        }).observe(chartContainer);
+
+        // 2. Логика WebSocket
+        const statusDiv = document.getElementById('connection-status');
+        const logConsole = document.getElementById('log-console');
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const wsUrl = `${protocol}://${window.location.host}/ws`;
+        
+        let socket;
+
+        function connect() {
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                statusDiv.innerText = "SYSTEM ONLINE";
+                statusDiv.classList.add('online');
+                statusDiv.classList.remove('offline');
+                log("> Uplink established.");
+            };
+
+            socket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'CANDLE_UPDATE') {
+                    const c = msg.data;
+                    // Обновляем график
+                    candleSeries.update({
+                        time: c.time / 1000, // TV requires seconds
+                        open: c.open, high: c.high, low: c.low, close: c.close
+                    });
+                    
+                    if (c.is_poisoned) {
+                        log(`> [ALERT] INJECTED CRASH DATA: ${c.close}`, true);
+                    }
+                }
+            };
+
+            socket.onclose = () => {
+                statusDiv.innerText = "OFFLINE - RECONNECTING...";
+                statusDiv.classList.add('offline');
+                statusDiv.classList.remove('online');
+                setTimeout(connect, 3000);
+            };
+        }
+
+        // 3. Управление Хаосом
+        let chaosActive = false;
+        const nukeBtn = document.getElementById('nuke-btn');
+
+        async function toggleChaos() {
+            chaosActive = !chaosActive;
+            
+            // Визуал кнопки
+            if (chaosActive) {
+                nukeBtn.innerText = "DEACTIVATE CRASH";
+                nukeBtn.classList.add('active');
+                log("> INITIATING CHAOS PROTOCOL...");
+            } else {
+                nukeBtn.innerText = "ACTIVATE CRASH";
+                nukeBtn.classList.remove('active');
+                log("> CHAOS PROTOCOL STANDBY.");
+            }
+
+            // Отправка команды на бэкенд
+            try {
+                await fetch('/control/chaos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: chaosActive })
+                });
+            } catch (e) {
+                log(`> COMMAND ERROR: ${e}`);
+            }
+        }
+
+        function log(text, isPoison = false) {
+            const div = document.createElement('div');
+            div.className = 'log-entry' + (isPoison ? ' poison' : '');
+            div.innerText = text;
+            logConsole.prepend(div);
+        }
+
+        // Старт
+        connect();
+    </script>
+</body>
+</html>
