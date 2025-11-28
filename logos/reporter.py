@@ -1,16 +1,16 @@
 from fpdf import FPDF
 import matplotlib.pyplot as plt
+import pandas as pd
 import os
 from datetime import datetime
 
 class VerdictReport(FPDF):
     def header(self):
-        # Логотип и Заголовок
         self.set_font('Courier', 'B', 20)
         self.cell(0, 10, 'MAGNUM OPS // FORENSIC LAB', 0, 1, 'L')
         self.set_font('Courier', '', 10)
         self.cell(0, 5, 'Algorithmic Trading Stress-Testing Unit', 0, 1, 'L')
-        self.line(10, 25, 200, 25) # Линия во всю ширину
+        self.line(10, 25, 200, 25)
         self.ln(15)
 
     def footer(self):
@@ -21,7 +21,7 @@ class VerdictReport(FPDF):
 
     def section_title(self, label):
         self.set_font('Courier', 'B', 14)
-        self.set_fill_color(230, 230, 230) # Серый фон
+        self.set_fill_color(230, 230, 230)
         self.set_text_color(0)
         self.cell(0, 8, f" {label}", 0, 1, 'L', fill=True)
         self.ln(4)
@@ -39,18 +39,25 @@ class Reporter:
     def generate_chart(self, trades_df, death_trade, filename):
         """Рисует красивый график"""
         plt.figure(figsize=(10, 4))
-        # Стиль графика
         plt.style.use('ggplot')
         
-        # Цена
-        plt.plot(trades_df['timestamp'], trades_df['price'], color='#333333', linewidth=1.5, label='Price Action')
+        # FIX: Убеждаемся, что время - это datetime объекты
+        if not pd.api.types.is_datetime64_any_dtype(trades_df['timestamp']):
+            # Если это инты, конвертируем
+            plot_dates = pd.to_datetime(trades_df['timestamp'], unit='ms')
+        else:
+            plot_dates = trades_df['timestamp']
+            
+        # Рисуем цену
+        plt.plot(plot_dates, trades_df['price'], color='#333333', linewidth=1.5, label='Price Action')
         
-        # Точка смерти
-        death_time = death_trade['timestamp']
+        # Точка смерти (конвертируем её время тоже)
+        death_time = pd.to_datetime(death_trade['timestamp'], unit='ms') if isinstance(death_trade['timestamp'], (int, float)) else death_trade['timestamp']
         death_price = death_trade['price']
+        
         plt.scatter([death_time], [death_price], color='red', s=150, marker='x', zorder=5, label='LIQUIDATION EVENT')
         
-        plt.title(f"Asset: {death_trade['symbol']} | Timeframe: M1", fontsize=10)
+        plt.title(f"Asset: {death_trade['symbol']} | Timeframe: Tick Data", fontsize=10)
         plt.xlabel("")
         plt.ylabel("Price (USDT)")
         plt.legend()
@@ -67,43 +74,25 @@ class Reporter:
         
         # --- 1. CASE OVERVIEW ---
         pdf.section_title("1. CASE OVERVIEW")
-        
         pdf.set_font("Courier", size=11)
-        pdf.cell(40, 8, "CASE ID:", 0, 0)
-        pdf.set_font("Courier", 'B', 11)
-        pdf.cell(0, 8, case_id, 0, 1)
-        
+        pdf.cell(40, 8, "CASE ID:", 0, 0); pdf.set_font("Courier", 'B', 11); pdf.cell(0, 8, case_id, 0, 1)
         pdf.set_font("Courier", size=11)
-        pdf.cell(40, 8, "DATE:", 0, 0)
-        pdf.cell(0, 8, datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'), 0, 1)
-        
-        pdf.cell(40, 8, "SYMBOL:", 0, 0)
-        pdf.cell(0, 8, f"{trade_data['symbol']} ({trade_data['side']})", 0, 1)
-        
-        pdf.cell(40, 8, "EXEC PRICE:", 0, 0)
-        pdf.set_text_color(200, 0, 0) # Red
-        pdf.cell(0, 8, f"{trade_data['price']}", 0, 1)
-        pdf.set_text_color(0)
+        pdf.cell(40, 8, "DATE:", 0, 0); pdf.cell(0, 8, datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'), 0, 1)
+        pdf.cell(40, 8, "SYMBOL:", 0, 0); pdf.cell(0, 8, f"{trade_data['symbol']} ({trade_data['side']})", 0, 1)
+        pdf.cell(40, 8, "EXEC PRICE:", 0, 0); pdf.set_text_color(200, 0, 0); pdf.cell(0, 8, f"{trade_data['price']}", 0, 1); pdf.set_text_color(0)
         pdf.ln(5)
 
         # --- 2. FORENSIC VERDICT ---
         pdf.section_title("2. FORENSIC VERDICT")
-        
         verdict = z3_result.get('verdict', 'UNKNOWN')
-        
         if verdict == 'LIQUIDITY_VOID_DETECTED':
             status = "CRITICAL FAILURE DETECTED"
-            color = (255, 0, 0) # Red
+            color = (255, 0, 0)
         else:
             status = "CLEAN EXECUTION"
-            color = (0, 128, 0) # Green
-            
-        pdf.set_font("Courier", 'B', 16)
-        pdf.set_text_color(*color)
-        pdf.cell(0, 10, f"[{verdict}]", 0, 1, 'C')
-        pdf.set_font("Courier", 'B', 12)
-        pdf.cell(0, 8, status, 0, 1, 'C')
-        pdf.set_text_color(0)
+            color = (0, 128, 0)
+        pdf.set_font("Courier", 'B', 16); pdf.set_text_color(*color); pdf.cell(0, 10, f"[{verdict}]", 0, 1, 'C')
+        pdf.set_font("Courier", 'B', 12); pdf.cell(0, 8, status, 0, 1, 'C'); pdf.set_text_color(0)
         pdf.ln(5)
 
         # --- 3. EVIDENCE (CHART) ---
@@ -111,44 +100,23 @@ class Reporter:
         if not historical_df.empty:
             chart_file = f"chart_{case_id}.png"
             chart_path = self.generate_chart(historical_df, trade_data, chart_file)
-            # Центрируем картинку
             pdf.image(chart_path, x=10, w=190)
             pdf.ln(5)
 
-        # --- 4. MATHEMATICAL PROOF (Z3) ---
+        # --- 4. Z3 PROOF ---
         pdf.section_title("4. FORMAL VERIFICATION (Z3 SOLVER)")
-        
-        proof_text = """
-        Magnum Ops uses Formal Verification methods to audit execution quality. 
-        Unlike probabilistic backtests, we utilize the Microsoft Z3 Theorem Prover 
-        to construct a logical proof of market conditions.
-        
-        LOGIC CONSTRAINT:
-        Abs(ExecPrice - MarketPrice) <= Spread + Slippage Tolerance
-        
-        SOLVER OUTPUT:
-        """
+        proof_text = "Magnum Ops uses Formal Verification (Microsoft Z3) to prove market conditions.\nLOGIC: Abs(ExecPrice - MarketPrice) <= Spread + Slippage"
         pdf.body_text(proof_text)
-        
-        # Вывод Z3 в рамке
-        pdf.set_font("Courier", '', 10)
-        pdf.set_fill_color(240, 240, 240)
+        pdf.set_font("Courier", '', 10); pdf.set_fill_color(240, 240, 240)
         details = z3_result.get('details', 'No details.')
         pdf.multi_cell(0, 5, details, border=1, fill=True)
         pdf.ln(10)
 
         # --- 5. CERTIFICATION ---
         pdf.section_title("5. CERTIFICATION")
-        cert_text = """
-        This document certifies that the trade event has been mathematically analyzed 
-        against historical tick data. The result serves as a cryptographic proof 
-        of the strategy's performance under stress conditions.
-        
-        Trustless Auditing Engine: v0.2.0
-        """
+        cert_text = "This document certifies that the trade event has been mathematically analyzed against historical tick data.\nTrustless Auditing Engine: v0.2.0"
         pdf.body_text(cert_text)
 
-        # Сохранение
         filename = f"VERDICT_{case_id}.pdf"
         filepath = os.path.join(self.output_dir, filename)
         pdf.output(filepath)

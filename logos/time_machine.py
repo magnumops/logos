@@ -4,23 +4,29 @@ import time
 from datetime import datetime, timezone
 
 class TimeMachine:
-    """
-    Модуль для восстановления исторического состояния рынка (Binance).
-    """
     BASE_URL = "https://api.binance.com"
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Logos-Pathologist/0.5"})
+        self.session.headers.update({
+            "User-Agent": "Logos-Pathologist/0.5"
+        })
 
     def _get(self, endpoint, params=None):
         url = f"{self.BASE_URL}{endpoint}"
         try:
+            # DEBUG: Print URL being requested
+            print(f"[DEBUG] Requesting: {url} with params: {params}")
             response = self.session.get(url, params=params, timeout=10)
+            
+            # DEBUG: Print status code
+            if response.status_code != 200:
+                print(f"[DEBUG] API Error {response.status_code}: {response.text[:200]}")
+            
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"[TimeMachine] Error fetching {url}: {e}")
+            print(f"[TimeMachine] CRITICAL NETWORK ERROR: {e}")
             return None
 
     def get_orderbook_snapshot(self, symbol: str, limit: int = 1000):
@@ -46,17 +52,18 @@ class TimeMachine:
         }
         print(f"[TimeMachine] Fetching trades for {symbol}...")
         data = self._get(endpoint, params)
-        if not data: return pd.DataFrame()
+        
+        if not data: 
+            print("[DEBUG] Received empty data or None from _get")
+            return pd.DataFrame()
 
         df = pd.DataFrame(data)
+        if df.empty:
+            print("[DEBUG] DataFrame is empty after parsing JSON")
+            return df
+            
         df = df.rename(columns={'a': 'trade_id', 'p': 'price', 'q': 'qty', 'T': 'timestamp', 'm': 'is_buyer_maker'})
         df['price'] = df['price'].astype(float)
         df['qty'] = df['qty'].astype(float)
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         return df
-
-if __name__ == "__main__":
-    tm = TimeMachine()
-    now = int(time.time() * 1000)
-    past = now - (5 * 60 * 1000)
-    print(tm.get_historical_agg_trades("BTCUSDT", past, now).head(3))
