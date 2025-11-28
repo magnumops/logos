@@ -6,99 +6,183 @@
     <title>MAGNUM OPS | CONTROL CENTER</title>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        /* SCALED UI FOR BETTER READABILITY */
+        /* BASE STYLES */
         body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; font-size: 16px; }
         
+        /* HEADER REDESIGN */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #30363d; padding-bottom: 15px; flex-shrink: 0; }
         .logo { font-size: 28px; font-weight: bold; color: #58a6ff; letter-spacing: 1px; }
-        .status { font-size: 16px; font-weight: bold; }
-        .status.online { color: #3fb950; }
-        .status.offline { color: #f85149; }
         
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        
+        /* Status LED (Tiny dot) */
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background-color: #f85149; display: inline-block; box-shadow: 0 0 5px #f85149; }
+        .status-dot.online { background-color: #3fb950; box-shadow: 0 0 5px #3fb950; }
+        
+        /* Contact Button */
+        .contact-trigger { 
+            font-size: 16px; font-weight: bold; color: #c9d1d9; cursor: pointer; 
+            border: 1px solid #30363d; padding: 8px 16px; border-radius: 4px; transition: all 0.2s; 
+        }
+        .contact-trigger:hover { border-color: #3fb950; color: #3fb950; background: rgba(63, 185, 80, 0.1); }
+
+        /* MAIN LAYOUT */
         .main-container { display: flex; flex: 1; gap: 25px; min-height: 0; width: 100%; }
+        #chart-container { flex: 1; min-width: 0; border: 1px solid #30363d; border-radius: 6px; position: relative; background: #0d1117; overflow: hidden; }
+        .controls { flex: 0 0 340px; width: 340px; background: #161b22; padding: 25px; border-radius: 6px; border: 1px solid #30363d; display: flex; flex-direction: column; gap: 25px; overflow-y: auto; }
         
-        #chart-container { flex: 1; min-width: 0; border: 1px solid #30363d; border-radius: 6px; position: relative; background: #0d1117; }
-        
-        /* ZERO STATE (BIGGER) */
+        /* ZERO STATE (CLEANER) */
         #zero-state {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             text-align: center; color: #8b949e; z-index: 5; pointer-events: none;
             width: 85%; max-width: 700px;
         }
-        .zero-title { color: #3fb950; font-weight: bold; margin-bottom: 40px; font-size: 36px; letter-spacing: 3px; animation: blink 2s infinite; }
-        .zero-section { margin-bottom: 35px; border-left: 3px solid #30363d; padding-left: 20px; text-align: left; }
-        .zero-head { color: #c9d1d9; font-weight: bold; font-size: 20px; margin-bottom: 8px; display: block; }
+        .zero-title { color: #3fb950; font-weight: bold; margin-bottom: 25px; font-size: 36px; letter-spacing: 3px; animation: blink 2s infinite; }
+        .zero-section { margin-bottom: 20px; border-left: 3px solid #30363d; padding-left: 20px; text-align: left; }
+        .zero-head { color: #c9d1d9; font-weight: bold; font-size: 20px; margin-bottom: 5px; display: block; }
         .zero-desc { font-size: 16px; line-height: 1.5; color: #8b949e; }
         .key { color: #58a6ff; font-weight: bold; }
         
-        /* Ссылка на документацию */
-        .zero-footer { margin-top: 50px; font-size: 14px; border-top: 1px solid #21262d; padding-top: 20px; color: #8b949e; pointer-events: auto; }
+        .zero-mid-link { font-size: 14px; color: #8b949e; pointer-events: auto; text-align: left; padding-left: 23px; font-style: italic; }
         .docs-link { color: #8b949e; text-decoration: underline; transition: color 0.2s; font-weight: bold; }
         .docs-link:hover { color: #58a6ff; text-decoration: none; }
 
-        /* FORENSIC OVERLAY */
-        #verdict-overlay {
-            position: absolute; top: 20px; left: 20px; z-index: 10;
-            background: rgba(13, 17, 23, 0.95); border: 1px solid #30363d; padding: 20px; border-radius: 4px;
-            display: none; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        /* CONTACT MODAL (TERMINAL STYLE) */
+        #contact-modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.85); align-items: center; justify-content: center;
+            backdrop-filter: blur(2px);
         }
-        .verdict-title { font-size: 22px; font-weight: bold; margin-bottom: 10px; }
-        .verdict-text { font-size: 14px; color: #8b949e; margin-bottom: 15px; }
-        .red { color: #f85149; border-color: #f85149; }
-        .green { color: #3fb950; border-color: #3fb950; }
+        .modal-box {
+            background-color: #0d1117; border: 2px solid #3fb950; width: 500px; padding: 0;
+            box-shadow: 0 0 20px rgba(63, 185, 80, 0.2); font-family: 'Courier New', monospace;
+        }
+        .modal-header {
+            background-color: #3fb950; color: #0d1117; padding: 10px 20px; font-weight: bold; font-size: 18px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .modal-body { padding: 30px; display: flex; flex-direction: column; gap: 20px; }
+        
+        .contact-row {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px dashed #30363d; padding-bottom: 10px;
+        }
+        .contact-label { color: #8b949e; font-size: 14px; }
+        .contact-value { 
+            color: #3fb950; font-size: 16px; font-weight: bold; cursor: pointer; 
+            position: relative; transition: all 0.2s; text-decoration: none;
+        }
+        .contact-value:hover { text-shadow: 0 0 5px rgba(63, 185, 80, 0.5); }
+        .contact-value.link { color: #58a6ff; }
+        .contact-value.link:hover { text-shadow: 0 0 5px rgba(88, 166, 255, 0.5); }
 
-        .controls { flex: 0 0 340px; width: 340px; background: #161b22; padding: 25px; border-radius: 6px; border: 1px solid #30363d; display: flex; flex-direction: column; gap: 25px; overflow-y: auto; }
+        .close-btn { 
+            background: none; border: 1px solid #3fb950; color: #3fb950; padding: 10px; 
+            width: 100%; margin-top: 10px; cursor: pointer; font-weight: bold; font-family: inherit;
+            text-transform: uppercase;
+        }
+        .close-btn:hover { background: #3fb950; color: #0d1117; }
+
+        /* TOOLTIP */
+        .tooltip {
+            visibility: hidden; background-color: #161b22; color: #fff; text-align: center;
+            border-radius: 4px; padding: 5px 10px; position: absolute; z-index: 10;
+            bottom: 140%; left: 50%; transform: translateX(-50%);
+            opacity: 0; transition: opacity 0.3s; font-size: 12px; border: 1px solid #30363d;
+            white-space: nowrap; box-shadow: 0 5px 15px rgba(0,0,0,0.5); pointer-events: none;
+        }
+        .tooltip::after {
+            content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px;
+            border-width: 5px; border-style: solid; border-color: #30363d transparent transparent transparent;
+        }
+        .contact-value:hover .tooltip { visibility: visible; opacity: 1; }
+
+        /* General UI Elements */
         .control-group { display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #30363d; padding-bottom: 20px; }
         label { font-size: 14px; text-transform: uppercase; color: #8b949e; font-weight: bold; letter-spacing: 1px; }
-        
         .btn { width: 100%; padding: 18px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; border: 1px solid; margin-bottom: 8px; border-radius: 4px; }
         .nuke-btn { background: #21262d; color: #f85149; border-color: #f85149; }
         .nuke-btn:hover { background: #f85149; color: #fff; box-shadow: 0 0 15px rgba(248, 81, 73, 0.6); }
         .nuke-btn.active { background: #f85149; color: #fff; animation: pulse 1s infinite; }
         .nuke-btn.processing { background: #d29922; color: #fff; cursor: wait; opacity: 0.8; }
-        
         .pdf-btn { background: #1f6feb; color: #fff; border-color: #58a6ff; display: none; }
         .pdf-btn:hover { background: #58a6ff; box-shadow: 0 0 15px rgba(88, 166, 255, 0.6); }
-
         .upload-area { border: 2px dashed #30363d; border-radius: 6px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s; background: #0d1117; color: #8b949e; font-size: 14px; font-weight: bold; }
         .upload-area:hover, .upload-area.dragover { border-color: #3fb950; color: #3fb950; background: rgba(63, 185, 80, 0.1); }
-        
         .loader { border: 3px solid #f3f3f3; border-top: 3px solid #3fb950; border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; margin-right: 10px; }
-        
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        
         .log-console { height: 180px; background: #000; border: 1px solid #30363d; padding: 15px; font-size: 13px; overflow-y: auto; color: #7ee787; font-family: monospace; line-height: 1.4; }
         .log-entry { margin-bottom: 4px; border-bottom: 1px solid #1f2428; padding-bottom: 2px; }
         .log-entry.poison { color: #f85149; }
         .hidden { display: none !important; }
+        #verdict-overlay { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(13, 17, 23, 0.95); border: 1px solid #30363d; padding: 20px; border-radius: 4px; display: none; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .verdict-title { font-size: 22px; font-weight: bold; margin-bottom: 10px; }
+        .verdict-text { font-size: 14px; color: #8b949e; margin-bottom: 15px; }
+        .red { color: #f85149; border-color: #f85149; }
+        .green { color: #3fb950; border-color: #3fb950; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
     <div class="header">
         <div class="logo">MAGNUM OPS // CONTROL CENTER</div>
-        <div class="status" id="connection-status">DISCONNECTED</div>
+        <div class="header-right">
+            <!-- Connection LED -->
+            <div id="connection-dot" class="status-dot"></div>
+            <!-- Contact Trigger -->
+            <div class="contact-trigger" onclick="openContactModal()">[CONTACT]</div>
+        </div>
     </div>
+
+    <!-- CONTACT MODAL -->
+    <div id="contact-modal" onclick="closeContactModal(event)">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span>COMMUNICATION CHANNEL</span>
+                <span style="cursor:pointer" onclick="closeContactModal(null, true)">X</span>
+            </div>
+            <div class="modal-body">
+                <div class="contact-row">
+                    <span class="contact-label">EMAIL:</span>
+                    <span class="contact-value" onclick="copyToClipboard(this, 'ramil@magnumops.com')">
+                        ramil@magnumops.com
+                        <span class="tooltip">Click to copy</span>
+                    </span>
+                </div>
+                <div class="contact-row">
+                    <span class="contact-label">TELEGRAM:</span>
+                    <span class="contact-value" onclick="copyToClipboard(this, '@Ramil_MagnumOps')">
+                        @Ramil_MagnumOps
+                        <span class="tooltip">Click to copy</span>
+                    </span>
+                </div>
+                <div class="contact-row">
+                    <span class="contact-label">WEB:</span>
+                    <a href="https://crash.magnumops.com" target="_blank" class="contact-value link">
+                        crash.magnumops.com
+                    </a>
+                </div>
+                <button class="close-btn" onclick="closeContactModal(null, true)">[CLOSE]</button>
+            </div>
+        </div>
+    </div>
+
     <div class="main-container">
         <div id="chart-container">
-            <!-- ZERO STATE SCREEN -->
+            <!-- ZERO STATE -->
             <div id="zero-state">
                 <div class="zero-title">> SYSTEM READY_</div>
-                
                 <div class="zero-section">
                     <span class="zero-head">MODE 1: REAL-TIME STRESS TEST</span>
                     <span class="zero-desc">Connect your trading bot to <span class="key">localhost:8080</span>. Waiting for data stream...<br>Click <span class="key">ACTIVATE CRASH</span> to inject anomalies.</span>
                 </div>
-                
+                <div class="zero-mid-link">
+                    For detailed instructions and API docs, check the <a href="https://github.com/magnumops/crash-generator/blob/main/README.md" target="_blank" class="docs-link">README</a>.
+                </div>
                 <div class="zero-section">
                     <span class="zero-head">MODE 2: FORENSIC LAB</span>
                     <span class="zero-desc">Drag & Drop your CSV history into the <span class="key">FORENSIC LAB</span> panel on the right to audit past liquidations with Z3 Solver.</span>
-                </div>
-
-                <!-- LINK TO DOCS -->
-                <div class="zero-footer">
-                    For detailed instructions and API docs, check the <a href="https://github.com/magnumops/crash-generator/blob/main/README.md" target="_blank" class="docs-link">README</a>.
                 </div>
             </div>
 
@@ -140,22 +224,57 @@
         </div>
     </div>
     <script>
+        // --- MODAL LOGIC ---
+        function openContactModal() {
+            document.getElementById('contact-modal').style.display = 'flex';
+        }
+        function closeContactModal(e, force=false) {
+            if (force || e.target.id === 'contact-modal') {
+                document.getElementById('contact-modal').style.display = 'none';
+            }
+        }
+
+        // --- CLIPBOARD LOGIC ---
+        function copyToClipboard(element, text) {
+            const showFeedback = () => {
+                const tooltip = element.querySelector('.tooltip');
+                if(tooltip) {
+                    const originalText = tooltip.innerText;
+                    tooltip.innerText = "Copied!";
+                    tooltip.style.opacity = '1';
+                    setTimeout(() => { tooltip.innerText = "Click to copy"; }, 2000);
+                }
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(showFeedback).catch(() => fallbackCopyTextToClipboard(text, showFeedback));
+            } else {
+                fallbackCopyTextToClipboard(text, showFeedback);
+            }
+        }
+        
+        function fallbackCopyTextToClipboard(text, callback) {
+            var textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed"; textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus(); textArea.select();
+            try { if(document.execCommand('copy')) callback(); } catch (err) {}
+            document.body.removeChild(textArea);
+        }
+
+        // --- MAIN APP LOGIC ---
         var chaosActive = false;
         var socket;
         var latestReportUrl = null;
         
-        const statusDiv = document.getElementById('connection-status');
         const logConsole = document.getElementById('log-console');
         const nukeBtn = document.getElementById('nuke-btn');
         const autoPdfBtn = document.getElementById('auto-pdf-btn');
         const chartContainer = document.getElementById('chart-container');
         const zeroState = document.getElementById('zero-state');
+        const statusDot = document.getElementById('connection-dot');
 
-        function hideZeroState() {
-            if (zeroState && zeroState.style.display !== 'none') {
-                zeroState.style.display = 'none';
-            }
-        }
+        function hideZeroState() { if (zeroState) zeroState.style.display = 'none'; }
 
         const chart = LightweightCharts.createChart(chartContainer, {
             layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#c9d1d9', fontSize: 12 },
@@ -164,7 +283,6 @@
         });
         let candleSeries = chart.addCandlestickSeries({ upColor: '#3fb950', downColor: '#f85149', borderVisible: false, wickUpColor: '#3fb950', wickDownColor: '#f85149' });
         let lineSeries = null;
-
         new ResizeObserver(entries => { if(entries.length>0) chart.applyOptions({width:entries[0].contentRect.width, height:entries[0].contentRect.height}); }).observe(chartContainer);
 
         function log(text, isPoison = false) {
@@ -201,6 +319,7 @@
         nukeBtn.addEventListener('click', toggleChaos);
         function openReport(url) { if(url) window.open(url, '_blank'); }
 
+        // --- UPLOAD ---
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('evidence-upload');
         const statusDivLoad = document.getElementById('analysis-status');
@@ -211,7 +330,6 @@
 
         ['dragenter', 'dragover'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); }, false); });
         ['dragleave', 'drop'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); }, false); });
-
         dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files[0]); });
         fileInput.addEventListener('change', (e) => { if(fileInput.files.length) handleFiles(fileInput.files[0]); });
 
@@ -220,22 +338,15 @@
             log(`> ANALYZING: ${file.name}...`);
             dropZone.style.display = 'none';
             statusDivLoad.classList.remove('hidden');
-
             const formData = new FormData();
             formData.append("file", file);
-
             try {
                 const res = await fetch('/api/v1/forensics/upload', { method: 'POST', body: formData });
                 const data = await res.json();
-                
                 statusDivLoad.classList.add('hidden');
                 dropZone.style.display = 'block';
-                
-                if (data.status === 'success') {
-                    showForensicMode(data);
-                } else {
-                    log(`> ERROR: ${data.message}`);
-                }
+                if (data.status === 'success') showForensicMode(data);
+                else log(`> ERROR: ${data.message}`);
             } catch(e) {
                 log(`> FAILED: ${e}`);
                 statusDivLoad.classList.add('hidden');
@@ -244,24 +355,18 @@
         }
 
         function showForensicMode(data) {
-            chart.removeSeries(candleSeries);
-            candleSeries = null;
+            chart.removeSeries(candleSeries); candleSeries = null;
             if(lineSeries) chart.removeSeries(lineSeries);
             lineSeries = chart.addLineSeries({ color: '#58a6ff', lineWidth: 2 });
-            
             const chartData = data.chart_data.map(d => ({ time: d.time, value: d.price }));
             chartData.sort((a, b) => a.time - b.time);
             lineSeries.setData(chartData);
-            
             lineSeries.setMarkers([{ time: data.death_point.time, position: 'aboveBar', color: '#f85149', shape: 'arrowDown', text: 'LIQUIDATION @ ' + data.death_point.price }]);
-            
             verdictOverlay.style.display = 'block';
             verdictTitle.innerText = data.verdict;
             verdictDetails.innerText = data.z3_details;
-            
             if(data.verdict === 'LIQUIDITY_VOID_DETECTED') { verdictOverlay.className = 'red'; verdictTitle.style.color = '#f85149'; } 
             else { verdictOverlay.className = 'green'; verdictTitle.style.color = '#3fb950'; }
-            
             overlayPdfBtn.onclick = () => window.open(data.report_url, '_blank');
             chart.timeScale().fitContent();
             log("> FORENSIC VISUALIZATION LOADED.");
@@ -274,10 +379,11 @@
             log("> RETURNED TO LIVE MODE.");
         }
 
+        // Websocket
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         function connect() {
             socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
-            socket.onopen = () => { statusDiv.innerText = "SYSTEM ONLINE"; statusDiv.className = "status online"; };
+            socket.onopen = () => { statusDot.className = "status-dot online"; };
             socket.onmessage = (e) => {
                 const msg = JSON.parse(e.data);
                 if(msg.type === 'CANDLE_UPDATE') {
@@ -288,7 +394,7 @@
                     }
                 }
             };
-            socket.onclose = () => { statusDiv.innerText = "RECONNECTING..."; statusDiv.className = "status offline"; setTimeout(connect, 3000); };
+            socket.onclose = () => { statusDot.className = "status-dot"; setTimeout(connect, 3000); };
         }
         connect();
     </script>

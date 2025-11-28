@@ -5,6 +5,7 @@ from logos.reporter import Reporter
 import sys
 import os
 import time
+import pandas as pd
 
 class ForensicDelegator:
     def __init__(self):
@@ -15,51 +16,47 @@ class ForensicDelegator:
 
     def run_investigation(self, csv_path: str):
         if not os.path.exists(csv_path):
-             return f"ERROR: File not found: {csv_path}"
+             return {"error": f"File not found: {csv_path}"}
 
         print(f"[Delegator] Starting investigation on case file: {csv_path}")
         
-        # 1. Анализ улик
         try:
             evidence_df = self.parser.normalize(csv_path)
             death_trade = self.parser.get_death_trade(evidence_df)
-            print(f"[Delegator] Identified Death Trade: {death_trade['side']} {death_trade['symbol']} @ {death_trade['price']}")
         except Exception as e:
-            return f"CRITICAL ERROR: Failed to parse evidence. {e}"
+            return {"error": f"Failed to parse evidence. {e}"}
 
-        # 2. Путешествие во времени
         symbol = death_trade['symbol']
         timestamp = death_trade['timestamp_ms']
         start_time = timestamp - 5000 
         end_time = timestamp + 1000
         
-        print("[Delegator] Engaging Time Machine...")
         historical_trades = self.tm.get_historical_agg_trades(symbol, start_time, end_time)
         orderbook = self.tm.get_orderbook_snapshot(symbol, limit=100)
         
         if historical_trades.empty or orderbook is None:
-            return "ERROR: Time Machine failed to retrieve historical context."
+            return {"error": "Time Machine failed to retrieve historical context."}
 
-        # 3. Вызов Судьи (Z3)
-        print(f"[Delegator] Data secured ({len(historical_trades)} trades). Summoning The Solver...")
         z3_result = self.solver.verify(death_trade, historical_trades, orderbook)
         
-        # 4. Оформление документов (Reporter)
-        print("[Delegator] Generating Verdict Document...")
         case_id = f"CASE-{int(time.time())}"
         pdf_path = self.reporter.create_verdict(case_id, death_trade, z3_result, historical_trades)
         
-        return {
-            "verdict": z3_result['verdict'],
-            "report_path": pdf_path
-        }
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python -m logos.forensic_delegator <path_to_csv>")
-        sys.exit(1)
+        # Подготовка данных для Фронтенда (JSON)
+        # Конвертируем DataFrame в список словарей
+        history_json = historical_trades[['timestamp', 'price']].copy()
+        # Приводим timestamp к секундам (unix) для JS
+        history_json['time'] = history_json['timestamp'].astype(int) / 10**9 
+        history_list = history_json[['time', 'price']].to_dict(orient='records')
         
-    csv_path = sys.argv[1]
-    delegator = ForensicDelegator()
-    result = delegator.run_investigation(csv_path)
-    print("\n[FINAL VERDICT]", result)
+        return {
+            "status": "success",
+            "verdict": z3_result['verdict'],
+            "z3_details": z3_result.get('details', ''),
+            "report_path": pdf_path,
+            "chart_data": history_list,
+            "death_point": {
+                "time": timestamp / 1000, # seconds
+                "price": death_trade['price']
+            }
+        }
