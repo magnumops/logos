@@ -45,28 +45,20 @@ manager = ConnectionManager()
 @app.on_event("shutdown")
 async def shutdown_event(): await CLIENT.aclose()
 
+# --- API ---
+
 @app.post("/api/v1/forensics/upload")
 async def upload_evidence(file: UploadFile = File(...)):
     try:
         file_location = os.path.join(EVIDENCE_DIR, file.filename)
         with open(file_location, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
-        
-        # Запускаем анализ
         result = forensics.run_investigation(file_location)
-        
-        if "error" in result:
-            return {"status": "error", "message": result["error"]}
-            
+        if "error" in result: return {"status": "error", "message": result["error"]}
         pdf_filename = os.path.basename(result["report_path"])
-        
-        # Возвращаем ПОЛНЫЙ пакет данных для визуализации
         return {
-            "status": "success",
-            "verdict": result["verdict"],
-            "z3_details": result["z3_details"],
+            "status": "success", "verdict": result["verdict"], "z3_details": result["z3_details"],
             "report_url": f"/api/reports/{pdf_filename}",
-            "chart_data": result["chart_data"],
-            "death_point": result["death_point"]
+            "chart_data": result["chart_data"], "death_point": result["death_point"]
         }
     except Exception as e:
         logger.error(f"Upload Failed: {e}")
@@ -97,10 +89,26 @@ async def get_klines(symbol: str, interval: str, limit: int = 500, crash_mode: b
     try:
         r = await CLIENT.get(f"{REAL_BINANCE_URL}/api/v3/klines", params={"symbol":symbol,"interval":interval,"limit":limit})
         data = r.json()
-        if active: data = chaos.inject_flash_crash(data)
+        
+        if active:
+            original_close = float(data[-1][4])
+            data = chaos.inject_flash_crash(data)
+            new_close = float(data[-1][4])
+            if abs(original_close - new_close) > 0.01:
+                drop = original_close - new_close
+                log_msg = f"[CHAOS] DROP: -{drop:.2f} USDT"
+                await manager.broadcast({"type": "SYSTEM_LOG", "text": log_msg, "level": "poison"})
+
         lc = data[-1]
         recorder.log_kline(symbol, lc, is_poisoned=active)
-        await manager.broadcast({"type":"CANDLE_UPDATE","data":{"time":lc[0],"open":float(lc[1]),"high":float(lc[2]),"low":float(lc[3]),"close":float(lc[4]),"is_poisoned":active}})
+        
+        await manager.broadcast({
+            "type": "CANDLE_UPDATE",
+            "data": {
+                "time": lc[0], "open": float(lc[1]), "high": float(lc[2]),
+                "low": float(lc[3]), "close": float(lc[4]), "is_poisoned": active
+            }
+        })
         return data
     except Exception as e: raise HTTPException(status_code=502, detail=str(e))
 
@@ -116,14 +124,37 @@ async def set_chaos_params(params: dict):
     global CHAOS_STATE
     prev = CHAOS_STATE["active"]
     new = params.get("active", prev)
+    
     CHAOS_STATE.update(params)
     recorder.log_event("SYSTEM_CONFIG_CHANGE", CHAOS_STATE)
     
-    # Auto-Analysis logic (simplified for clarity, mostly handled by frontend upload now)
+    response = {"status": "ok", "state": CHAOS_STATE}
+    
+    # ЛОГИКА АВТО-ОТЧЕТА ПРИ ОСТАНОВКЕ
     if prev and not new:
+        logger.info("Deactivating Chaos. Generating Report...")
+        
+        # 1. Экспортируем данные текущей сессии
+        evidence_csv = recorder.export_crash_evidence()
+        
+        if evidence_csv:
+            try:
+                # 2. Запускаем анализ
+                verdict_data = forensics.run_investigation(evidence_csv)
+                
+                # 3. Если отчет создан, добавляем ссылку в ответ
+                if verdict_data.get("report_path"):
+                    pdf_filename = os.path.basename(verdict_data["report_path"])
+                    response["report_ready"] = True
+                    response["report_url"] = f"/api/reports/{pdf_filename}"
+                    logger.info(f"Report ready: {pdf_filename}")
+            except Exception as e:
+                logger.error(f"Auto-Forensics Failed: {e}")
+        
+        # Начинаем новую запись
         recorder.start_new_session()
         
-    return {"status": "ok", "state": CHAOS_STATE}
+    return response
 
 app.mount("/static", StaticFiles(directory="/app/vendor/logos/logos/ui/static"), name="static")
 @app.get("/dashboard", response_class=HTMLResponse)

@@ -3,101 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MAGNUM OPS | CONTROL CENTER</title>
+    <title>MAGNUM_OPS | CONTROL_CENTER</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f85149' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><line x1='12' y1='6' x2='12' y2='18'/><line x1='6' y1='12' x2='18' y2='12'/></svg>">
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        /* BASE STYLES */
+        /* STYLES (COMPACT) */
         body { background-color: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; font-size: 16px; }
-        
-        /* HEADER REDESIGN */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #30363d; padding-bottom: 15px; flex-shrink: 0; }
         .logo { font-size: 28px; font-weight: bold; color: #58a6ff; letter-spacing: 1px; }
-        
         .header-right { display: flex; align-items: center; gap: 15px; }
-        
-        /* Status LED (Tiny dot) */
         .status-dot { width: 10px; height: 10px; border-radius: 50%; background-color: #f85149; display: inline-block; box-shadow: 0 0 5px #f85149; }
         .status-dot.online { background-color: #3fb950; box-shadow: 0 0 5px #3fb950; }
-        
-        /* Contact Button */
-        .contact-trigger { 
-            font-size: 16px; font-weight: bold; color: #c9d1d9; cursor: pointer; 
-            border: 1px solid #30363d; padding: 8px 16px; border-radius: 4px; transition: all 0.2s; 
-        }
+        .contact-trigger { font-size: 16px; font-weight: bold; color: #c9d1d9; cursor: pointer; border: 1px solid #30363d; padding: 8px 16px; border-radius: 4px; transition: all 0.2s; }
         .contact-trigger:hover { border-color: #3fb950; color: #3fb950; background: rgba(63, 185, 80, 0.1); }
-
-        /* MAIN LAYOUT */
         .main-container { display: flex; flex: 1; gap: 25px; min-height: 0; width: 100%; }
         #chart-container { flex: 1; min-width: 0; border: 1px solid #30363d; border-radius: 6px; position: relative; background: #0d1117; overflow: hidden; }
-        .controls { flex: 0 0 340px; width: 340px; background: #161b22; padding: 25px; border-radius: 6px; border: 1px solid #30363d; display: flex; flex-direction: column; gap: 25px; overflow-y: auto; }
         
-        /* ZERO STATE (CLEANER) */
-        #zero-state {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            text-align: center; color: #8b949e; z-index: 5; pointer-events: none;
-            width: 85%; max-width: 700px;
-        }
-        .zero-title { color: #3fb950; font-weight: bold; margin-bottom: 25px; font-size: 36px; letter-spacing: 3px; animation: blink 2s infinite; }
+        /* ZERO STATE */
+        #zero-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #8b949e; z-index: 5; pointer-events: none; width: 85%; max-width: 700px; }
+        .zero-title { color: #3fb950; font-weight: bold; margin-bottom: 30px; font-size: 36px; letter-spacing: 3px; animation: blink 2s infinite; }
         .zero-section { margin-bottom: 20px; border-left: 3px solid #30363d; padding-left: 20px; text-align: left; }
-        .zero-head { color: #c9d1d9; font-weight: bold; font-size: 20px; margin-bottom: 5px; display: block; }
+        .zero-section.mode-2 { margin-top: 50px; } 
+        .zero-head { color: #c9d1d9; font-weight: bold; font-size: 20px; margin-bottom: 8px; display: block; }
         .zero-desc { font-size: 16px; line-height: 1.5; color: #8b949e; }
         .key { color: #58a6ff; font-weight: bold; }
-        
-        .zero-mid-link { font-size: 14px; color: #8b949e; pointer-events: auto; text-align: left; padding-left: 23px; font-style: italic; }
+        .zero-mid-link { margin-bottom: 20px; font-size: 14px; color: #8b949e; pointer-events: auto; text-align: left; padding-left: 23px; font-style: italic; }
         .docs-link { color: #8b949e; text-decoration: underline; transition: color 0.2s; font-weight: bold; }
         .docs-link:hover { color: #58a6ff; text-decoration: none; }
+        .zero-contacts { margin-top: 40px; padding-top: 20px; border-top: 1px solid #30363d; text-align: center; pointer-events: auto; }
+        .contacts-header { font-size: 14px; color: #8b949e; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .contacts-row { display: flex; justify-content: center; gap: 30px; align-items: center; }
+        .contact-item { color: #58a6ff; font-size: 16px; font-weight: bold; cursor: pointer; position: relative; transition: color 0.2s; text-decoration: none; }
+        .contact-item:hover { color: #79c0ff; text-decoration: underline; }
 
-        /* CONTACT MODAL (TERMINAL STYLE) */
-        #contact-modal {
-            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%;
-            background-color: rgba(0, 0, 0, 0.85); align-items: center; justify-content: center;
-            backdrop-filter: blur(2px);
-        }
-        .modal-box {
-            background-color: #0d1117; border: 2px solid #3fb950; width: 500px; padding: 0;
-            box-shadow: 0 0 20px rgba(63, 185, 80, 0.2); font-family: 'Courier New', monospace;
-        }
-        .modal-header {
-            background-color: #3fb950; color: #0d1117; padding: 10px 20px; font-weight: bold; font-size: 18px;
-            display: flex; justify-content: space-between; align-items: center;
-        }
+        /* MODAL */
+        #contact-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.85); align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+        .modal-box { background-color: #0d1117; border: 2px solid #3fb950; width: 500px; padding: 0; box-shadow: 0 0 20px rgba(63, 185, 80, 0.2); font-family: 'Courier New', monospace; }
+        .modal-header { background-color: #3fb950; color: #0d1117; padding: 10px 20px; font-weight: bold; font-size: 18px; display: flex; justify-content: space-between; align-items: center; }
         .modal-body { padding: 30px; display: flex; flex-direction: column; gap: 20px; }
-        
-        .contact-row {
-            display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 1px dashed #30363d; padding-bottom: 10px;
-        }
+        .contact-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #30363d; padding-bottom: 10px; }
         .contact-label { color: #8b949e; font-size: 14px; }
-        .contact-value { 
-            color: #3fb950; font-size: 16px; font-weight: bold; cursor: pointer; 
-            position: relative; transition: all 0.2s; text-decoration: none;
-        }
+        .contact-value { color: #3fb950; font-size: 16px; font-weight: bold; cursor: pointer; position: relative; transition: all 0.2s; text-decoration: none; }
         .contact-value:hover { text-shadow: 0 0 5px rgba(63, 185, 80, 0.5); }
         .contact-value.link { color: #58a6ff; }
         .contact-value.link:hover { text-shadow: 0 0 5px rgba(88, 166, 255, 0.5); }
-
-        .close-btn { 
-            background: none; border: 1px solid #3fb950; color: #3fb950; padding: 10px; 
-            width: 100%; margin-top: 10px; cursor: pointer; font-weight: bold; font-family: inherit;
-            text-transform: uppercase;
-        }
+        .close-btn { background: none; border: 1px solid #3fb950; color: #3fb950; padding: 10px; width: 100%; margin-top: 10px; cursor: pointer; font-weight: bold; font-family: inherit; text-transform: uppercase; }
         .close-btn:hover { background: #3fb950; color: #0d1117; }
+        
+        .tooltip { visibility: hidden; background-color: #161b22; color: #fff; text-align: center; border-radius: 4px; padding: 5px 10px; position: absolute; z-index: 1; bottom: 140%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; font-size: 12px; border: 1px solid #30363d; white-space: nowrap; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .tooltip::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #30363d transparent transparent transparent; }
+        .contact-item:hover .tooltip { visibility: visible; opacity: 1; }
 
-        /* TOOLTIP */
-        .tooltip {
-            visibility: hidden; background-color: #161b22; color: #fff; text-align: center;
-            border-radius: 4px; padding: 5px 10px; position: absolute; z-index: 10;
-            bottom: 140%; left: 50%; transform: translateX(-50%);
-            opacity: 0; transition: opacity 0.3s; font-size: 12px; border: 1px solid #30363d;
-            white-space: nowrap; box-shadow: 0 5px 15px rgba(0,0,0,0.5); pointer-events: none;
-        }
-        .tooltip::after {
-            content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px;
-            border-width: 5px; border-style: solid; border-color: #30363d transparent transparent transparent;
-        }
-        .contact-value:hover .tooltip { visibility: visible; opacity: 1; }
+        #verdict-overlay { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(13, 17, 23, 0.95); border: 1px solid #30363d; padding: 20px; border-radius: 4px; display: none; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .verdict-title { font-size: 22px; font-weight: bold; margin-bottom: 10px; }
+        .verdict-text { font-size: 14px; color: #8b949e; margin-bottom: 15px; }
+        .red { color: #f85149; border-color: #f85149; }
+        .green { color: #3fb950; border-color: #3fb950; }
 
-        /* General UI Elements */
+        .controls { flex: 0 0 340px; width: 340px; background: #161b22; padding: 25px; border-radius: 6px; border: 1px solid #30363d; display: flex; flex-direction: column; gap: 25px; overflow-y: auto; }
         .control-group { display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #30363d; padding-bottom: 20px; }
         label { font-size: 14px; text-transform: uppercase; color: #8b949e; font-weight: bold; letter-spacing: 1px; }
         .btn { width: 100%; padding: 18px; font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 1px; border: 1px solid; margin-bottom: 8px; border-radius: 4px; }
@@ -114,55 +77,27 @@
         .log-entry { margin-bottom: 4px; border-bottom: 1px solid #1f2428; padding-bottom: 2px; }
         .log-entry.poison { color: #f85149; }
         .hidden { display: none !important; }
-        #verdict-overlay { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(13, 17, 23, 0.95); border: 1px solid #30363d; padding: 20px; border-radius: 4px; display: none; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .verdict-title { font-size: 22px; font-weight: bold; margin-bottom: 10px; }
-        .verdict-text { font-size: 14px; color: #8b949e; margin-bottom: 15px; }
-        .red { color: #f85149; border-color: #f85149; }
-        .green { color: #3fb950; border-color: #3fb950; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
 </head>
 <body>
+    <!-- Header & Modal (Same) -->
     <div class="header">
-        <div class="logo">MAGNUM OPS // CONTROL CENTER</div>
+        <div class="logo">MAGNUM_OPS // CONTROL_CENTER</div>
         <div class="header-right">
-            <!-- Connection LED -->
             <div id="connection-dot" class="status-dot"></div>
-            <!-- Contact Trigger -->
             <div class="contact-trigger" onclick="openContactModal()">[CONTACT]</div>
         </div>
     </div>
-
-    <!-- CONTACT MODAL -->
     <div id="contact-modal" onclick="closeContactModal(event)">
         <div class="modal-box">
-            <div class="modal-header">
-                <span>COMMUNICATION CHANNEL</span>
-                <span style="cursor:pointer" onclick="closeContactModal(null, true)">X</span>
-            </div>
+            <div class="modal-header"><span>COMMUNICATION CHANNEL</span><span style="cursor:pointer" onclick="closeContactModal(null, true)">X</span></div>
             <div class="modal-body">
-                <div class="contact-row">
-                    <span class="contact-label">EMAIL:</span>
-                    <span class="contact-value" onclick="copyToClipboard(this, 'ramil@magnumops.com')">
-                        ramil@magnumops.com
-                        <span class="tooltip">Click to copy</span>
-                    </span>
-                </div>
-                <div class="contact-row">
-                    <span class="contact-label">TELEGRAM:</span>
-                    <span class="contact-value" onclick="copyToClipboard(this, '@Ramil_MagnumOps')">
-                        @Ramil_MagnumOps
-                        <span class="tooltip">Click to copy</span>
-                    </span>
-                </div>
-                <div class="contact-row">
-                    <span class="contact-label">WEB:</span>
-                    <a href="https://crash.magnumops.com" target="_blank" class="contact-value link">
-                        crash.magnumops.com
-                    </a>
-                </div>
+                <div class="contact-row"><span class="contact-label">EMAIL:</span><span class="contact-value" onclick="copyToClipboard(this, 'ramil@magnumops.com')">ramil@magnumops.com<span class="tooltip">Click to copy</span></span></div>
+                <div class="contact-row"><span class="contact-label">TELEGRAM:</span><span class="contact-value" onclick="copyToClipboard(this, '@Ramil_MagnumOps')">@Ramil_MagnumOps<span class="tooltip">Click to copy</span></span></div>
+                <div class="contact-row"><span class="contact-label">WEB:</span><a href="https://crash.magnumops.com" target="_blank" class="contact-value link">crash.magnumops.com</a></div>
                 <button class="close-btn" onclick="closeContactModal(null, true)">[CLOSE]</button>
             </div>
         </div>
@@ -170,147 +105,72 @@
 
     <div class="main-container">
         <div id="chart-container">
-            <!-- ZERO STATE -->
             <div id="zero-state">
                 <div class="zero-title">> SYSTEM READY_</div>
-                <div class="zero-section">
-                    <span class="zero-head">MODE 1: REAL-TIME STRESS TEST</span>
-                    <span class="zero-desc">Connect your trading bot to <span class="key">localhost:8080</span>. Waiting for data stream...<br>Click <span class="key">ACTIVATE CRASH</span> to inject anomalies.</span>
-                </div>
-                <div class="zero-mid-link">
-                    For detailed instructions and API docs, check the <a href="https://github.com/magnumops/crash-generator/blob/main/README.md" target="_blank" class="docs-link">README</a>.
-                </div>
-                <div class="zero-section">
-                    <span class="zero-head">MODE 2: FORENSIC LAB</span>
-                    <span class="zero-desc">Drag & Drop your CSV history into the <span class="key">FORENSIC LAB</span> panel on the right to audit past liquidations with Z3 Solver.</span>
-                </div>
+                <div class="zero-section"><span class="zero-head">MODE 1: REAL-TIME STRESS TEST</span><span class="zero-desc">Connect your trading bot to <span class="key">localhost:8080</span>. Waiting for data stream...<br>Click <span class="key">ACTIVATE CRASH</span> to inject anomalies.</span></div>
+                <div class="zero-mid-link">For detailed instructions and API docs, check the <a href="https://github.com/magnumops/crash-generator/blob/main/README.md" target="_blank" class="docs-link">README</a>.</div>
+                <div class="zero-section mode-2"><span class="zero-head">MODE 2: FORENSIC LAB</span><span class="zero-desc">Drag & Drop your CSV history into the <span class="key">FORENSIC LAB</span> panel on the right to audit past liquidations with Z3 Solver.</span></div>
+                <div class="zero-contacts"><div class="contacts-header">Questions? Feedback? Reach out directly:</div><div class="contacts-row"><div class="contact-item" onclick="copyToClipboard(this, 'ramil@magnumops.com')">ramil@magnumops.com<span class="tooltip">Click to copy</span></div><div class="contact-item" onclick="copyToClipboard(this, '@Ramil_MagnumOps')">@Ramil_MagnumOps<span class="tooltip">Click to copy</span></div></div></div>
             </div>
-
-            <!-- OVERLAY (Verdict) -->
             <div id="verdict-overlay">
-                <div id="verdict-title" class="verdict-title"></div>
-                <div id="verdict-details" class="verdict-text"></div>
+                <div id="verdict-title" class="verdict-title"></div><div id="verdict-details" class="verdict-text"></div>
                 <button class="btn pdf-btn" id="overlay-pdf-btn" style="display:block; margin-top:10px;">DOWNLOAD PDF</button>
                 <button class="btn" onclick="resetChart()" style="background:none; border:none; color:#8b949e; font-size:12px; margin-top:5px;">CLOSE & RESET</button>
             </div>
         </div>
         
         <div class="controls">
-            <!-- 1. Chaos Control -->
+            <!-- MODE 1: AUTO REPORT BUTTON -->
             <div class="control-group">
                 <label>1. Real-time Stress Test</label>
                 <button class="btn nuke-btn" id="nuke-btn">ACTIVATE CRASH</button>
-                <button class="btn pdf-btn" id="auto-pdf-btn" onclick="openReport(latestReportUrl)">📄 DOWNLOAD AUTO-REPORT</button>
+                <button class="btn pdf-btn" id="auto-pdf-btn" onclick="openReport(latestReportUrl)">📄 DOWNLOAD CRASH REPORT</button>
             </div>
-            
-            <!-- 2. Forensic Lab (Upload) -->
-            <div class="control-group">
-                <label>2. Forensic Lab (Manual Upload)</label>
-                <div class="upload-area" id="drop-zone" onclick="document.getElementById('evidence-upload').click()">
-                    <p>📂 DRAG CSV HERE TO ANALYZE</p>
-                    <input type="file" id="evidence-upload" accept=".csv" hidden>
-                </div>
-                <div id="analysis-status" class="hidden" style="margin-top: 10px; text-align: center; color: #d29922; font-weight: bold;">
-                    <span class="loader"></span> Z3 SOLVING...
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label>System Logs</label>
-                <div class="log-console" id="log-console">
-                    <div class="log-entry">> System initialized...</div>
-                </div>
-            </div>
+            <!-- MODE 2 -->
+            <div class="control-group"><label>2. Forensic Lab (Manual Upload)</label><div class="upload-area" id="drop-zone" onclick="document.getElementById('evidence-upload').click()"><p>📂 DRAG CSV HERE TO ANALYZE</p><input type="file" id="evidence-upload" accept=".csv" hidden></div><div id="analysis-status" class="hidden" style="margin-top: 10px; text-align: center; color: #d29922; font-weight: bold;"><span class="loader"></span> Z3 SOLVING...</div></div>
+            <div class="control-group"><label>System Logs</label><div class="log-console" id="log-console"><div class="log-entry">> System initialized...</div></div></div>
         </div>
     </div>
     <script>
-        // --- MODAL LOGIC ---
-        function openContactModal() {
-            document.getElementById('contact-modal').style.display = 'flex';
-        }
-        function closeContactModal(e, force=false) {
-            if (force || e.target.id === 'contact-modal') {
-                document.getElementById('contact-modal').style.display = 'none';
-            }
-        }
-
-        // --- CLIPBOARD LOGIC ---
+        function openContactModal() { document.getElementById('contact-modal').style.display = 'flex'; }
+        function closeContactModal(e, force=false) { if (force || e.target.id === 'contact-modal') document.getElementById('contact-modal').style.display = 'none'; }
         function copyToClipboard(element, text) {
-            const showFeedback = () => {
-                const tooltip = element.querySelector('.tooltip');
-                if(tooltip) {
-                    const originalText = tooltip.innerText;
-                    tooltip.innerText = "Copied!";
-                    tooltip.style.opacity = '1';
-                    setTimeout(() => { tooltip.innerText = "Click to copy"; }, 2000);
-                }
-            };
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(text).then(showFeedback).catch(() => fallbackCopyTextToClipboard(text, showFeedback));
-            } else {
-                fallbackCopyTextToClipboard(text, showFeedback);
-            }
+            const showFeedback = () => { const tooltip = element.querySelector('.tooltip'); if(tooltip) { const originalText = tooltip.innerText; tooltip.innerText = "Copied!"; tooltip.style.opacity = '1'; setTimeout(() => { tooltip.innerText = "Click to copy"; }, 2000); } };
+            if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(showFeedback).catch(() => fallbackCopyTextToClipboard(text, showFeedback)); else fallbackCopyTextToClipboard(text, showFeedback);
         }
-        
         function fallbackCopyTextToClipboard(text, callback) {
-            var textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed"; textArea.style.opacity = "0";
-            document.body.appendChild(textArea);
-            textArea.focus(); textArea.select();
-            try { if(document.execCommand('copy')) callback(); } catch (err) {}
-            document.body.removeChild(textArea);
+            var textArea = document.createElement("textarea"); textArea.value = text; textArea.style.position = "fixed"; textArea.style.opacity = "0"; document.body.appendChild(textArea); textArea.focus(); textArea.select(); try { if(document.execCommand('copy')) callback(); } catch (err) {} document.body.removeChild(textArea);
         }
 
-        // --- MAIN APP LOGIC ---
-        var chaosActive = false;
-        var socket;
-        var latestReportUrl = null;
-        
-        const logConsole = document.getElementById('log-console');
-        const nukeBtn = document.getElementById('nuke-btn');
-        const autoPdfBtn = document.getElementById('auto-pdf-btn');
-        const chartContainer = document.getElementById('chart-container');
-        const zeroState = document.getElementById('zero-state');
-        const statusDot = document.getElementById('connection-dot');
+        var chaosActive = false; var socket; var latestReportUrl = null;
+        const statusDiv = document.getElementById('connection-status'); const statusDot = document.getElementById('connection-dot');
+        const logConsole = document.getElementById('log-console'); const nukeBtn = document.getElementById('nuke-btn'); const autoPdfBtn = document.getElementById('auto-pdf-btn');
+        const chartContainer = document.getElementById('chart-container'); const zeroState = document.getElementById('zero-state');
 
         function hideZeroState() { if (zeroState) zeroState.style.display = 'none'; }
 
-        const chart = LightweightCharts.createChart(chartContainer, {
-            layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#c9d1d9', fontSize: 12 },
-            grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } },
-            timeScale: { timeVisible: true, secondsVisible: true },
-        });
+        const chart = LightweightCharts.createChart(chartContainer, { layout: { background: { type: 'solid', color: '#0d1117' }, textColor: '#c9d1d9', fontSize: 12 }, grid: { vertLines: { color: '#30363d' }, horzLines: { color: '#30363d' } }, timeScale: { timeVisible: true, secondsVisible: true }, rightPriceScale: { autoScale: true } });
         let candleSeries = chart.addCandlestickSeries({ upColor: '#3fb950', downColor: '#f85149', borderVisible: false, wickUpColor: '#3fb950', wickDownColor: '#f85149' });
         let lineSeries = null;
         new ResizeObserver(entries => { if(entries.length>0) chart.applyOptions({width:entries[0].contentRect.width, height:entries[0].contentRect.height}); }).observe(chartContainer);
 
-        function log(text, isPoison = false) {
-            const div = document.createElement('div');
-            div.className = 'log-entry' + (isPoison ? ' poison' : '');
-            div.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
-            logConsole.prepend(div);
-            if (logConsole.children.length > 50) logConsole.lastElementChild.remove();
-        }
+        function log(text, isPoison = false) { const div = document.createElement('div'); div.className = 'log-entry' + (isPoison ? ' poison' : ''); div.innerText = `[${new Date().toLocaleTimeString()}] ${text}`; logConsole.prepend(div); if (logConsole.children.length > 50) logConsole.lastElementChild.remove(); }
 
+        // --- TOGGLE CHAOS (AUTO REPORT) ---
         async function toggleChaos() {
+            if (!candleSeries) { resetChart(); await new Promise(r => setTimeout(r, 50)); }
             chaosActive = !chaosActive;
-            if (chaosActive) {
-                nukeBtn.innerText = "DEACTIVATE CRASH"; nukeBtn.classList.add('active');
-                autoPdfBtn.style.display = 'none';
-                log("> CHAOS ACTIVE");
-            } else {
-                nukeBtn.innerText = "ANALYZING..."; nukeBtn.classList.remove('active'); nukeBtn.classList.add('processing');
-                log("> STOPPED. GENERATING VERDICT...");
-            }
+            if (chaosActive) { nukeBtn.innerText = "DEACTIVATE CRASH"; nukeBtn.classList.add('active'); autoPdfBtn.style.display = 'none'; log("> CHAOS ACTIVE"); hideZeroState(); }
+            else { nukeBtn.innerText = "ANALYZING..."; nukeBtn.classList.remove('active'); nukeBtn.classList.add('processing'); log("> STOPPED. GENERATING VERDICT..."); }
             try {
                 const res = await fetch('/control/chaos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: chaosActive }) });
                 const data = await res.json();
                 if (!chaosActive) {
                     nukeBtn.classList.remove('processing'); nukeBtn.innerText = "ACTIVATE CRASH";
+                    // SHOW REPORT BUTTON
                     if (data.report_ready && data.report_url) {
                         latestReportUrl = data.report_url;
-                        autoPdfBtn.style.display = 'block';
+                        autoPdfBtn.style.display = 'block'; // SHOW BUTTON
                         log("> [SUCCESS] REPORT GENERATED");
                     }
                 }
@@ -319,80 +179,32 @@
         nukeBtn.addEventListener('click', toggleChaos);
         function openReport(url) { if(url) window.open(url, '_blank'); }
 
-        // --- UPLOAD ---
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('evidence-upload');
-        const statusDivLoad = document.getElementById('analysis-status');
-        const verdictOverlay = document.getElementById('verdict-overlay');
-        const verdictTitle = document.getElementById('verdict-title');
-        const verdictDetails = document.getElementById('verdict-details');
-        const overlayPdfBtn = document.getElementById('overlay-pdf-btn');
-
+        // --- UPLOAD/FORENSIC LOGIC ---
+        const dropZone = document.getElementById('drop-zone'); const fileInput = document.getElementById('evidence-upload'); const statusDivLoad = document.getElementById('analysis-status'); const verdictOverlay = document.getElementById('verdict-overlay'); const verdictTitle = document.getElementById('verdict-title'); const verdictDetails = document.getElementById('verdict-details'); const overlayPdfBtn = document.getElementById('overlay-pdf-btn');
         ['dragenter', 'dragover'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); }, false); });
         ['dragleave', 'drop'].forEach(eventName => { dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); }, false); });
         dropZone.addEventListener('drop', (e) => { if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files[0]); });
         fileInput.addEventListener('change', (e) => { if(fileInput.files.length) handleFiles(fileInput.files[0]); });
-
-        async function handleFiles(file) {
-            hideZeroState();
-            log(`> ANALYZING: ${file.name}...`);
-            dropZone.style.display = 'none';
-            statusDivLoad.classList.remove('hidden');
-            const formData = new FormData();
-            formData.append("file", file);
-            try {
-                const res = await fetch('/api/v1/forensics/upload', { method: 'POST', body: formData });
-                const data = await res.json();
-                statusDivLoad.classList.add('hidden');
-                dropZone.style.display = 'block';
-                if (data.status === 'success') showForensicMode(data);
-                else log(`> ERROR: ${data.message}`);
-            } catch(e) {
-                log(`> FAILED: ${e}`);
-                statusDivLoad.classList.add('hidden');
-                dropZone.style.display = 'block';
-            }
-        }
-
+        async function handleFiles(file) { hideZeroState(); log(`> ANALYZING: ${file.name}...`); dropZone.style.display = 'none'; statusDivLoad.classList.remove('hidden'); const formData = new FormData(); formData.append("file", file); try { const res = await fetch('/api/v1/forensics/upload', { method: 'POST', body: formData }); const data = await res.json(); statusDivLoad.classList.add('hidden'); dropZone.style.display = 'block'; if (data.status === 'success') showForensicMode(data); else log(`> ERROR: ${data.message}`); } catch(e) { log(`> FAILED: ${e}`); statusDivLoad.classList.add('hidden'); dropZone.style.display = 'block'; } }
         function showForensicMode(data) {
             chart.removeSeries(candleSeries); candleSeries = null;
-            if(lineSeries) chart.removeSeries(lineSeries);
-            lineSeries = chart.addLineSeries({ color: '#58a6ff', lineWidth: 2 });
-            const chartData = data.chart_data.map(d => ({ time: d.time, value: d.price }));
-            chartData.sort((a, b) => a.time - b.time);
-            lineSeries.setData(chartData);
+            if(lineSeries) chart.removeSeries(lineSeries); lineSeries = chart.addLineSeries({ color: '#58a6ff', lineWidth: 2 });
+            const chartData = data.chart_data.map(d => ({ time: d.time, value: d.price })); chartData.sort((a, b) => a.time - b.time); lineSeries.setData(chartData);
             lineSeries.setMarkers([{ time: data.death_point.time, position: 'aboveBar', color: '#f85149', shape: 'arrowDown', text: 'LIQUIDATION @ ' + data.death_point.price }]);
-            verdictOverlay.style.display = 'block';
-            verdictTitle.innerText = data.verdict;
-            verdictDetails.innerText = data.z3_details;
-            if(data.verdict === 'LIQUIDITY_VOID_DETECTED') { verdictOverlay.className = 'red'; verdictTitle.style.color = '#f85149'; } 
-            else { verdictOverlay.className = 'green'; verdictTitle.style.color = '#3fb950'; }
-            overlayPdfBtn.onclick = () => window.open(data.report_url, '_blank');
-            chart.timeScale().fitContent();
-            log("> FORENSIC VISUALIZATION LOADED.");
+            verdictOverlay.style.display = 'block'; verdictTitle.innerText = data.verdict; verdictDetails.innerText = data.z3_details;
+            if(data.verdict === 'LIQUIDITY_VOID_DETECTED') { verdictOverlay.className = 'red'; verdictTitle.style.color = '#f85149'; } else { verdictOverlay.className = 'green'; verdictTitle.style.color = '#3fb950'; }
+            overlayPdfBtn.onclick = () => window.open(data.report_url, '_blank'); chart.timeScale().fitContent(); log("> FORENSIC VISUALIZATION LOADED.");
         }
+        function resetChart() { verdictOverlay.style.display = 'none'; if(lineSeries) { chart.removeSeries(lineSeries); lineSeries = null; } candleSeries = chart.addCandlestickSeries({ upColor: '#3fb950', downColor: '#f85149', borderVisible: false, wickUpColor: '#3fb950', wickDownColor: '#f85149' }); log("> RETURNED TO LIVE MODE."); }
 
-        function resetChart() {
-            verdictOverlay.style.display = 'none';
-            if(lineSeries) { chart.removeSeries(lineSeries); lineSeries = null; }
-            candleSeries = chart.addCandlestickSeries({ upColor: '#3fb950', downColor: '#f85149', borderVisible: false, wickUpColor: '#3fb950', wickDownColor: '#f85149' });
-            log("> RETURNED TO LIVE MODE.");
-        }
-
-        // Websocket
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         function connect() {
             socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
             socket.onopen = () => { statusDot.className = "status-dot online"; };
             socket.onmessage = (e) => {
                 const msg = JSON.parse(e.data);
-                if(msg.type === 'CANDLE_UPDATE') {
-                    hideZeroState();
-                    if(candleSeries) {
-                        const c = msg.data;
-                        candleSeries.update({ time: c.time / 1000, open: c.open, high: c.high, low: c.low, close: c.close });
-                    }
-                }
+                if(msg.type === 'SYSTEM_LOG') log(msg.text, msg.level === 'poison');
+                if(msg.type === 'CANDLE_UPDATE') { hideZeroState(); if(candleSeries) { const c = msg.data; candleSeries.update({ time: c.time / 1000, open: c.open, high: c.high, low: c.low, close: c.close }); } }
             };
             socket.onclose = () => { statusDot.className = "status-dot"; setTimeout(connect, 3000); };
         }

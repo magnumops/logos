@@ -4,87 +4,66 @@ from logos.solvers.stop_loss_hunter import StopLossHunter
 
 class ChaosGenerator:
     """
-    Генератор Хаоса v0.2 (Merton Enhanced).
-    Сочетает Z3 (поиск цели) и Merton Jump-Diffusion (симуляция процесса).
+    Генератор Хаоса v0.3 (Aggressive).
+    Гарантирует визуальный обвал цены при активации.
     """
     
     def __init__(self):
         self.sniper = StopLossHunter()
 
-    def merton_jump_diffusion(self, S0, T, mu, sigma, lambda_j, mu_j, sigma_j):
-        """
-        Симуляция одного шага модели Мертона.
-        S0: Текущая цена
-        T: Временной шаг (1 минута normalized)
-        mu: Дрифт (тренд)
-        sigma: Волатильность (диффузия)
-        lambda_j: Интенсивность прыжков (сколько прыжков в год)
-        mu_j: Средний размер прыжка
-        sigma_j: Волатильность прыжка
-        """
-        # Диффузия (Обычный рынок)
-        dt = T
-        dW = np.random.normal(0, np.sqrt(dt))
-        diffusion = (mu - 0.5 * sigma**2) * dt + sigma * dW
-        
-        # Прыжок (Крах)
-        # Poisson процесс: произошло ли событие?
-        N = np.random.poisson(lambda_j * dt)
-        jump = 0
-        if N > 0:
-            # Если прыжок случился, вычисляем его размер
-            # Для краш-теста мы форсируем прыжок, если он не выпал случайно
-            jump = np.random.normal(mu_j, sigma_j) * N
-            
-        return S0 * np.exp(diffusion + jump)
-
     def inject_flash_crash(self, klines: list):
         """
-        Превращает последнюю свечу в 'Свечу Мертона'.
+        Модифицирует ПОСЛЕДНЮЮ свечу в массиве.
+        Формат Kline Binance: [time, open, high, low, close, vol, ...]
         """
         if not klines:
             return klines
             
+        # Берем последнюю свечу (которая сейчас рисуется)
+        # Важно: мы создаем копию данных, чтобы не ломать логику ссылок,
+        # но вставляем обратно в список.
         last_kline = klines[-1]
         
-        # Данные текущей свечи
+        # Парсим текущие данные
         open_price = float(last_kline[1])
         current_close = float(last_kline[4])
         
-        # 1. Z3 Снайпер находит идеальное дно
-        # Мы ищем дно относительно цены открытия
-        target_low = self.sniper.find_minimal_crash(open_price)
+        # --- ЛОГИКА АТАКИ ---
         
-        # 2. Моделируем "Тень" свечи через Мертона
-        # Мы хотим показать, что цена "гуляла" перед тем как упасть
-        # Симулируем волатильность внутри свечи
+        # 1. Вычисляем цель (Z3 или Hard Drop)
+        # Чтобы гарантировать видимость, мы берем минимум 5% падения
+        target_price = self.sniper.find_minimal_crash(open_price)
         
-        # Параметры для "Панической свечи"
-        sigma = 0.5 # Высокая волатильность
-        lambda_j = 100 # Высокая вероятность прыжка (мы же в crash_mode)
+        # Hard cap: Если Z3 предложил слишком мягкое падение, форсируем -8%
+        if target_price > open_price * 0.95:
+            target_price = open_price * 0.92
+            
+        # 2. Формируем "Свечу Смерти"
+        # High: Небольшой вынос вверх (Stop Hunt лонгов/шортов) перед падением
+        new_high = open_price * 1.002
         
-        # Генерируем "Close" цену используя Мертона, но ограничиваем её
-        # Close должен быть ниже Open (красная свеча), но выше Low (Target)
-        # Для простоты: Close - это "отскок дохлой кошки" от Target
-        rebound = (open_price - target_low) * random.uniform(0.05, 0.15)
-        new_close = target_low + rebound
+        # Low: То самое дно
+        new_low = target_price
         
-        # Формируем свечу
-        # High: Цена могла дернуться вверх на панике перед обвалом
-        fake_pump = open_price * (1 + random.uniform(0.001, 0.005)) 
-        new_high = max(open_price, fake_pump)
+        # Close: Отскок "дохлой кошки" (немного выше дна)
+        new_close = target_price * 1.005
         
-        # Обновляем структуру свечи
-        last_kline[1] = str(open_price)
-        last_kline[2] = str(new_high)      # High
-        last_kline[3] = str(target_low)    # Low (Z3 Target)
-        last_kline[4] = str(new_close)     # Close (Merton Rebound)
+        # Volume: Панический объем (x50 от обычного)
+        current_vol = float(last_kline[5])
+        new_vol = current_vol * 50.0
         
-        # Также увеличиваем объем (Panic Selling)
-        original_vol = float(last_kline[5])
-        last_kline[5] = str(original_vol * random.uniform(5.0, 10.0))
+        # 3. Применяем изменения (строки, как требует API Binance)
+        # Индексы: 0=Time, 1=Open, 2=High, 3=Low, 4=Close, 5=Vol
         
-        print(f"[Merton] INJECTED: Open={open_price} -> Low={target_low} (Target) -> Close={new_close}")
+        # ВАЖНО: Мы меняем только Low, Close и Vol. Open оставляем как есть, чтобы график был непрерывным.
+        last_kline[2] = str(new_high)
+        last_kline[3] = str(new_low)   # CRASH
+        last_kline[4] = str(new_close) # CLOSE AT BOTTOM
+        last_kline[5] = str(new_vol)
         
+        # DEBUG LOG (Чтобы видеть в консоли)
+        print(f"\n[CHAOS] INJECTION: {open_price:.2f} -> {new_close:.2f} (DROP: {open_price - new_close:.2f})")
+        
+        # Возвращаем модифицированный список
         klines[-1] = last_kline
         return klines
